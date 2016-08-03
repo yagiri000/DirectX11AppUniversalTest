@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="共通">
+      <UniqueIdentifier>829cd153-2059-421b-bee9-c3c84bdd4539</UniqueIdentifier>
+    </Filter>
+    <Filter Include="資産">
+      <UniqueIdentifier>dc5e1c5a-9d71-4983-939f-dff57f875f85</UniqueIdentifier>
+      <Extensions>bmp;fbx;gif;jpg;jpeg;tga;tiff;tif;png</Extensions>
+    </Filter>
+	<Filter Include="コンテンツ">
+      <UniqueIdentifier>068aac75-27b5-446f-95ec-e66ce020a265</UniqueIdentifier>
+    </Filter>
+    <Image Include="Assets\Logo.png">
+      <Filter>資産</Filter>
+    </Image>
+    <Image Include="Assets\SmallLogo.png">
+      <Filter>資産</Filter>
+    </Image>
+    <Image Include="Assets\StoreLogo.png">
+      <Filter>資産</Filter>
+    </Image>
+    <Image Include="Assets\SplashScreen.png">
+      <Filter>資産</Filter>
+    </Image>
+  </ItemGroup>
+</Project>
