@@ -41,7 +41,7 @@ void Sample3DSceneRenderer::CreateWindowSizeDependentResources()
 	// 適用する必要はありません。
 
 	// このサンプルでは、行優先のマトリックスを使用した右辺座標系を使用しています。
-	XMMATRIX perspectiveMatrix = XMMatrixPerspectiveFovRH(
+	XMMATRIX perspectiveMatrix = XMMatrixPerspectiveFovLH(
 		fovAngleY,
 		aspectRatio,
 		0.01f,
@@ -58,11 +58,11 @@ void Sample3DSceneRenderer::CreateWindowSizeDependentResources()
 		);
 
 	// 視点は (0,0.7,1.5) の位置にあり、y 軸に沿って上方向のポイント (0,-0.1,0) を見ています。
-	static const XMVECTORF32 eye = { 0.0f, 0.7f, 1.5f, 0.0f };
-	static const XMVECTORF32 at = { 0.0f, -0.1f, 0.0f, 0.0f };
+	static const XMVECTORF32 eye = { 0.0f, 0.7f, -1.5f, 0.0f };
+	static const XMVECTORF32 at = { 0.0f, 0.0f, 0.0f, 0.0f };
 	static const XMVECTORF32 up = { 0.0f, 1.0f, 0.0f, 0.0f };
 
-	XMStoreFloat4x4(&m_constantBufferData.view, XMMatrixTranspose(XMMatrixLookAtRH(eye, at, up)));
+	XMStoreFloat4x4(&m_constantBufferData.view, XMMatrixTranspose(XMMatrixLookAtLH(eye, at, up)));
 }
 
 // フレームごとに 1 回呼び出し、キューブを回転させてから、モデルおよびビューのマトリックスを計算します。
@@ -75,7 +75,8 @@ void Sample3DSceneRenderer::Update(DX::StepTimer const& timer)
 		double totalRotation = timer.GetTotalSeconds() * radiansPerSecond;
 		float radians = static_cast<float>(fmod(totalRotation, XM_2PI));
 
-		Rotate(radians);
+		//Rotate(radians);
+		Rotate(0.0f);
 	}
 }
 
@@ -235,24 +236,32 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 	// 両方のシェーダーの読み込みが完了したら、メッシュを作成します。
 	auto createCubeTask = (createPSTask && createVSTask).then([this] () {
 
+		static const int xNum = 11;
+		static const int yNum = 11;
 		// メッシュの頂点を読み込みます。各頂点には、位置と色があります。
-		static const VertexPositionColor cubeVertices[] = 
-		{
-			{XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT3(0.0f, 0.0f, 0.0f)},
-			{XMFLOAT3(-0.5f, -0.5f,  0.5f), XMFLOAT3(0.0f, 0.0f, 1.0f)},
-			{XMFLOAT3(-0.5f,  0.5f, -0.5f), XMFLOAT3(0.0f, 1.0f, 0.0f)},
-			{XMFLOAT3(-0.5f,  0.5f,  0.5f), XMFLOAT3(0.0f, 1.0f, 1.0f)},
-			{XMFLOAT3( 0.5f, -0.5f, -0.5f), XMFLOAT3(1.0f, 0.0f, 0.0f)},
-			{XMFLOAT3( 0.5f, -0.5f,  0.5f), XMFLOAT3(1.0f, 0.0f, 1.0f)},
-			{XMFLOAT3( 0.5f,  0.5f, -0.5f), XMFLOAT3(1.0f, 1.0f, 0.0f)},
-			{XMFLOAT3( 0.5f,  0.5f,  0.5f), XMFLOAT3(1.0f, 1.0f, 1.0f)},
-		};
+		static VertexPositionColor cubeVertices[xNum*yNum];
+
+		//{XMFLOAT3(0.5f, 0.5f, 0.5f), XMFLOAT3(1.0f, 1.0f, 1.0f)},
+		for (int i = 0; i < yNum; i++) {
+			for (int j = 0; j < xNum; j++){
+				const float size = 1.0f;
+				float x = (float)j / (float)(xNum - 1);
+				x = 2.0f * x - 1.0f;
+				x = size * x;
+				float y = (float)i / (float)(yNum - 1);
+				y = 2.0f * y - 1.0f;
+				y = size * y;
+				cubeVertices[j + i*yNum].pos = XMFLOAT3(x, 0.0f, y);
+				cubeVertices[j + i*yNum].color = XMFLOAT3((float)j / (float)(xNum - 1), (float)i / (float)(yNum - 1), 0.0f);
+			}
+		}
 
 		D3D11_SUBRESOURCE_DATA vertexBufferData = {0};
 		vertexBufferData.pSysMem = cubeVertices;
 		vertexBufferData.SysMemPitch = 0;
 		vertexBufferData.SysMemSlicePitch = 0;
-		CD3D11_BUFFER_DESC vertexBufferDesc(sizeof(cubeVertices), D3D11_BIND_VERTEX_BUFFER);
+		CD3D11_BUFFER_DESC vertexBufferDesc(sizeof(cubeVertices), D3D11_BIND_UNORDERED_ACCESS);
+		
 		DX::ThrowIfFailed(
 			m_deviceResources->GetD3DDevice()->CreateBuffer(
 				&vertexBufferDesc,
@@ -261,31 +270,27 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 				)
 			);
 
+
+
+
 		// メッシュのインデックスを読み込みます。インデックスの 3 つ 1 組の値のそれぞれは、次のものを表します
 		// 画面上に描画される三角形を表します。
 		// たとえば、0,2,1 とは、頂点バッファーからのインデックスを意味します:
 		// 0、2、1 を持つ頂点が、このメッシュの
 		// 最初の三角形を構成することを意味します。
-		static const unsigned short cubeIndices [] =
-		{
-			0,2,1, // -x
-			1,2,3,
-
-			4,5,6, // +x
-			5,7,6,
-
-			0,1,5, // -y
-			0,5,4,
-
-			2,6,7, // +y
-			2,7,3,
-
-			0,4,6, // -z
-			0,6,2,
-
-			1,3,7, // +z
-			1,7,5,
-		};
+		static unsigned short cubeIndices[(xNum-1)*(yNum-1)*6];
+		int count = 0;
+		for (int i = 0; i < yNum - 1; i++) {
+			for (int j = 0; j < xNum - 1; j++) {
+				int n = j + i * yNum;
+				cubeIndices[count++] = n;
+				cubeIndices[count++] = n + yNum;
+				cubeIndices[count++] = n + 1;
+				cubeIndices[count++] = n + 1;
+				cubeIndices[count++] = n + yNum;
+				cubeIndices[count++] = n + yNum + 1;
+			}
+		}
 
 		m_indexCount = ARRAYSIZE(cubeIndices);
 
