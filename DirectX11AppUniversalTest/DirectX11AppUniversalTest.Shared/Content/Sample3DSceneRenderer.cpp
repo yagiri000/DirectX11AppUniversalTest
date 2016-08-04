@@ -73,7 +73,37 @@ void Sample3DSceneRenderer::Update(DX::StepTimer const& timer)
 		// 度をラジアンに変換し、秒を回転角度に変換します
 		float radiansPerSecond = XMConvertToRadians(m_degreesPerSecond);
 		double totalRotation = timer.GetTotalSeconds() * radiansPerSecond;
-		float radians = static_cast<float>(fmod(totalRotation, XM_2PI));
+		float radians = static_cast<float>(totalRotation);
+
+		// 頂点座標、色を作成
+		static const int xNum = 21;
+		static const int yNum = 21;
+		static VertexPositionColor cubeVertices[xNum*yNum];
+
+		for (int i = 0; i < yNum; i++) {
+			for (int j = 0; j < xNum; j++) {
+				const float size = 1.0f;
+				float x = (float)j / (float)(xNum - 1);
+				x = 2.0f * x - 1.0f;
+				x = size * x;
+				float z = (float)i / (float)(yNum - 1);
+				z = 2.0f * z - 1.0f;
+				z = size * z;
+				
+				float y = sinf(sqrtf(x*x+z*z)*8.0f + radians*10.0f) * 0.3f;
+				cubeVertices[j + i*yNum].pos = XMFLOAT3(x, y, z);
+
+				float r = fmodf((float)j / (float)(xNum - 1) + radians, 1.0f);
+				cubeVertices[j + i*yNum].color = XMFLOAT3(1.0f, y * 0.5f + 0.5, 1.0f);
+			}
+		}
+
+		// データを突っ込む
+		auto context = m_deviceResources->GetD3DDeviceContext();
+		D3D11_MAPPED_SUBRESOURCE msr;
+		context->Map(m_vertexBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &msr);
+		memcpy(msr.pData, cubeVertices, sizeof(VertexPositionColor) * xNum * yNum); // 3頂点分コピー
+		context->Unmap(m_vertexBuffer.Get(), 0);
 
 		//Rotate(radians);
 		Rotate(0.0f);
@@ -236,8 +266,8 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 	// 両方のシェーダーの読み込みが完了したら、メッシュを作成します。
 	auto createCubeTask = (createPSTask && createVSTask).then([this] () {
 
-		static const int xNum = 11;
-		static const int yNum = 11;
+		static const int xNum = 21;
+		static const int yNum = 21;
 		// メッシュの頂点を読み込みます。各頂点には、位置と色があります。
 		static VertexPositionColor cubeVertices[xNum*yNum];
 
@@ -260,7 +290,7 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 		vertexBufferData.pSysMem = cubeVertices;
 		vertexBufferData.SysMemPitch = 0;
 		vertexBufferData.SysMemSlicePitch = 0;
-		CD3D11_BUFFER_DESC vertexBufferDesc(sizeof(cubeVertices), D3D11_BIND_UNORDERED_ACCESS);
+		CD3D11_BUFFER_DESC vertexBufferDesc(sizeof(cubeVertices), D3D11_BIND_VERTEX_BUFFER, D3D11_USAGE_DYNAMIC, D3D11_CPU_ACCESS_WRITE);
 		
 		DX::ThrowIfFailed(
 			m_deviceResources->GetD3DDevice()->CreateBuffer(
@@ -269,8 +299,6 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 				&m_vertexBuffer
 				)
 			);
-
-
 
 
 		// メッシュのインデックスを読み込みます。インデックスの 3 つ 1 組の値のそれぞれは、次のものを表します
