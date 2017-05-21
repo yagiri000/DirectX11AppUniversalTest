@@ -10,6 +10,12 @@ namespace DirectX11AppUniversalTest
 		DirectX::XMFLOAT4X4 projection;
 	};
 
+	// MVP 定数バッファー。
+	struct LightColConstantBuffer
+	{
+		DirectX::XMFLOAT3 lightCol;
+	};
+
 	// 頂点シェーダーへの頂点ごとのデータの送信に使用します。
 	struct VertexPositionColor
 	{

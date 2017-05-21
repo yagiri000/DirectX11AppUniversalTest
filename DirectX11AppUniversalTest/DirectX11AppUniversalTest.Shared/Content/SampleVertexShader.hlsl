@@ -6,6 +6,11 @@ cbuffer ModelViewProjectionConstantBuffer : register(b0)
 	matrix projection;
 };
 
+cbuffer LightColBuffer : register(b1)
+{
+	float3 lightCol;
+};
+
 // 頂点シェーダーへの入力として使用する頂点ごとのデータ。
 struct VertexShaderInput
 {
@@ -33,7 +38,8 @@ PixelShaderInput main(VertexShaderInput input)
 	output.pos = pos;
 
 	// 変更せずに色をパススルーします。
-	output.color = input.color;
+	//output.color = input.color;
+	output.color = input.color * lightCol;
 
 	return output;
 }

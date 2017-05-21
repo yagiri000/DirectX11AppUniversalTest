@@ -10,6 +10,8 @@ namespace DirectX11AppUniversalTest
 	class Sample3DSceneRenderer
 	{
 	public:
+		static const int xNum = 50;
+		static const int yNum = 10;
 		Sample3DSceneRenderer(const std::shared_ptr<DX::DeviceResources>& deviceResources);
 		void CreateDeviceDependentResources();
 		void CreateWindowSizeDependentResources();
@@ -36,9 +38,12 @@ namespace DirectX11AppUniversalTest
 		Microsoft::WRL::ComPtr<ID3D11VertexShader>	m_vertexShader;
 		Microsoft::WRL::ComPtr<ID3D11PixelShader>	m_pixelShader;
 		Microsoft::WRL::ComPtr<ID3D11Buffer>		m_constantBuffer;
+		Microsoft::WRL::ComPtr<ID3D11Buffer>		m_constantBufferLightCol;
 
 		// キューブ ジオメトリのシステム リソース。
 		ModelViewProjectionConstantBuffer	m_constantBufferData;
+		LightColConstantBuffer m_cBLightBufferData;
+
 		uint32	m_indexCount;
 
 		// レンダリング ループで使用する変数。

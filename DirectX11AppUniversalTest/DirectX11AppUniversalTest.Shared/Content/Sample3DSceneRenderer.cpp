@@ -46,7 +46,7 @@ void Sample3DSceneRenderer::CreateWindowSizeDependentResources()
 		aspectRatio,
 		0.01f,
 		100.0f
-		);
+	);
 
 	XMFLOAT4X4 orientation = m_deviceResources->GetOrientationTransform3D();
 
@@ -55,7 +55,7 @@ void Sample3DSceneRenderer::CreateWindowSizeDependentResources()
 	XMStoreFloat4x4(
 		&m_constantBufferData.projection,
 		XMMatrixTranspose(perspectiveMatrix * orientationMatrix)
-		);
+	);
 
 	// 視点は (0,0.7,1.5) の位置にあり、y 軸に沿って上方向のポイント (0,-0.1,0) を見ています。
 	static const XMVECTORF32 eye = { 0.0f, 0.7f, -1.5f, 0.0f };
@@ -68,6 +68,12 @@ void Sample3DSceneRenderer::CreateWindowSizeDependentResources()
 // フレームごとに 1 回呼び出し、キューブを回転させてから、モデルおよびビューのマトリックスを計算します。
 void Sample3DSceneRenderer::Update(DX::StepTimer const& timer)
 {
+	auto lerp = [](float a, float b, float rate) {
+		return a * (1.0f - rate) + b * rate;
+	};
+
+	
+
 	if (!m_tracking)
 	{
 		// 度をラジアンに変換し、秒を回転角度に変換します
@@ -75,26 +81,24 @@ void Sample3DSceneRenderer::Update(DX::StepTimer const& timer)
 		double totalRotation = timer.GetTotalSeconds() * radiansPerSecond;
 		float radians = static_cast<float>(totalRotation);
 
-		// 頂点座標、色を作成
-		static const int xNum = 21;
-		static const int yNum = 21;
+		// 頂点座標、色を作成 ここの定数は他の場所でも定義されているので注意（あとで直す）
 		static VertexPositionColor cubeVertices[xNum*yNum];
+
 
 		for (int i = 0; i < yNum; i++) {
 			for (int j = 0; j < xNum; j++) {
-				const float size = 1.0f;
-				float x = (float)j / (float)(xNum - 1);
-				x = 2.0f * x - 1.0f;
-				x = size * x;
-				float z = (float)i / (float)(yNum - 1);
-				z = 2.0f * z - 1.0f;
-				z = size * z;
-				
-				float y = sinf(sqrtf(x*x+z*z)*8.0f + radians*10.0f) * 0.3f;
-				cubeVertices[j + i*yNum].pos = XMFLOAT3(x, y, z);
-
-				float r = fmodf((float)j / (float)(xNum - 1) + radians, 1.0f);
-				cubeVertices[j + i*yNum].color = XMFLOAT3(1.0f, y * 0.5f + 0.5, 1.0f);
+				const float ri = (float)i / yNum;
+				const float rj = (float)j / xNum;
+				float r = 0.4f
+					+ 0.08f * sin(5.0f * XM_2PI * rj + radians * 3.0f);
+				const float height = 0.3f;
+				const float angle1 = XM_2PI * rj;
+				float x = r * cos(angle1);
+				float z = r * sin(angle1);
+				float y = height * ri;
+				cubeVertices[j + i*xNum].pos = XMFLOAT3(x, y, z);
+				XMVECTOR hsv = XMColorHSVToRGB(XMVectorSet(rj, 1.0f, 1.0f, 1.0f));
+				cubeVertices[j + i*xNum].color = XMFLOAT3(XMVectorGetX(hsv), XMVectorGetY(hsv), XMVectorGetZ(hsv));
 			}
 		}
 
@@ -104,9 +108,9 @@ void Sample3DSceneRenderer::Update(DX::StepTimer const& timer)
 		context->Map(m_vertexBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &msr);
 		memcpy(msr.pData, cubeVertices, sizeof(VertexPositionColor) * xNum * yNum); // 3頂点分コピー
 		context->Unmap(m_vertexBuffer.Get(), 0);
-
-		//Rotate(radians);
-		Rotate(0.0f);
+		
+		// 回転させる
+		Rotate(radians);
 	}
 }
 
@@ -114,7 +118,10 @@ void Sample3DSceneRenderer::Update(DX::StepTimer const& timer)
 void Sample3DSceneRenderer::Rotate(float radians)
 {
 	//更新されたモデル マトリックスをシェーダーに渡す準備をします
-	XMStoreFloat4x4(&m_constantBufferData.model, XMMatrixTranspose(XMMatrixRotationY(radians)));
+	// auto model44 = XMMatrixTranspose(XMMatrixRotationY(radians));
+	auto model44 = XMMatrixTranspose(XMMatrixTranslation(0.0f, 0.0f, 0.0f));
+	
+	XMStoreFloat4x4(&m_constantBufferData.model, model44);
 }
 
 void Sample3DSceneRenderer::StartTracking()
@@ -148,6 +155,11 @@ void Sample3DSceneRenderer::Render()
 
 	auto context = m_deviceResources->GetD3DDeviceContext();
 
+	
+	m_cBLightBufferData.lightCol.x = 1.0f;
+	m_cBLightBufferData.lightCol.y = 0.0f;
+	m_cBLightBufferData.lightCol.z = 1.0f;
+
 	// 定数バッファーを準備して、グラフィックス デバイスに送信します。
 	context->UpdateSubresource(
 		m_constantBuffer.Get(),
@@ -156,7 +168,20 @@ void Sample3DSceneRenderer::Render()
 		&m_constantBufferData,
 		0,
 		0
-		);
+	);
+
+	context->UpdateSubresource(
+		m_constantBufferLightCol.Get(),
+		0,
+		NULL,
+		&m_cBLightBufferData,
+		0,
+		0
+	);
+
+	
+
+
 
 	// 各頂点は、VertexPositionColor 構造体の 1 つのインスタンスです。
 	UINT stride = sizeof(VertexPositionColor);
@@ -167,13 +192,13 @@ void Sample3DSceneRenderer::Render()
 		m_vertexBuffer.GetAddressOf(),
 		&stride,
 		&offset
-		);
+	);
 
 	context->IASetIndexBuffer(
 		m_indexBuffer.Get(),
 		DXGI_FORMAT_R16_UINT, // 各インデックスは、1 つの 16 ビット符号なし整数 (short) です。
 		0
-		);
+	);
 
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
@@ -184,28 +209,36 @@ void Sample3DSceneRenderer::Render()
 		m_vertexShader.Get(),
 		nullptr,
 		0
-		);
+	);
 
 	// 定数バッファーをグラフィックス デバイスに送信します。
 	context->VSSetConstantBuffers(
 		0,
 		1,
 		m_constantBuffer.GetAddressOf()
-		);
+	);
+
+	context->VSSetConstantBuffers(
+		1,
+		1,
+		m_constantBufferLightCol.GetAddressOf()
+	);
+
+
 
 	// ピクセル シェーダーをアタッチします。
 	context->PSSetShader(
 		m_pixelShader.Get(),
 		nullptr,
 		0
-		);
+	);
 
 	// オブジェクトを描画します。
 	context->DrawIndexed(
 		m_indexCount,
 		0,
 		0
-		);
+	);
 }
 
 void Sample3DSceneRenderer::CreateDeviceDependentResources()
@@ -222,10 +255,10 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 				fileData.size(),
 				nullptr,
 				&m_vertexShader
-				)
-			);
+			)
+		);
 
-		static const D3D11_INPUT_ELEMENT_DESC vertexDesc [] =
+		static const D3D11_INPUT_ELEMENT_DESC vertexDesc[] =
 		{
 			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 			{ "COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
@@ -238,8 +271,8 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 				&fileData[0],
 				fileData.size(),
 				&m_inputLayout
-				)
-			);
+			)
+		);
 	});
 
 	// ピクセル シェーダー ファイルを読み込んだ後、シェーダーと定数バッファーを作成します。
@@ -250,30 +283,39 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 				fileData.size(),
 				nullptr,
 				&m_pixelShader
-				)
-			);
+			)
+		);
 
-		CD3D11_BUFFER_DESC constantBufferDesc(sizeof(ModelViewProjectionConstantBuffer) , D3D11_BIND_CONSTANT_BUFFER);
+
+		CD3D11_BUFFER_DESC constantBufferDesc(sizeof(ModelViewProjectionConstantBuffer), D3D11_BIND_CONSTANT_BUFFER);
 		DX::ThrowIfFailed(
 			m_deviceResources->GetD3DDevice()->CreateBuffer(
 				&constantBufferDesc,
 				nullptr,
 				&m_constantBuffer
-				)
-			);
+			)
+		);
+
+
+		CD3D11_BUFFER_DESC constantBufferLightColDesc(sizeof(ModelViewProjectionConstantBuffer), D3D11_BIND_CONSTANT_BUFFER);
+		DX::ThrowIfFailed(
+			m_deviceResources->GetD3DDevice()->CreateBuffer(
+				&constantBufferDesc,
+				nullptr,
+				&m_constantBufferLightCol
+			)
+		);
+
 	});
 
 	// 両方のシェーダーの読み込みが完了したら、メッシュを作成します。
-	auto createCubeTask = (createPSTask && createVSTask).then([this] () {
-
-		static const int xNum = 21;
-		static const int yNum = 21;
+	auto createCubeTask = (createPSTask && createVSTask).then([this]() {
 		// メッシュの頂点を読み込みます。各頂点には、位置と色があります。
 		static VertexPositionColor cubeVertices[xNum*yNum];
 
 		//{XMFLOAT3(0.5f, 0.5f, 0.5f), XMFLOAT3(1.0f, 1.0f, 1.0f)},
 		for (int i = 0; i < yNum; i++) {
-			for (int j = 0; j < xNum; j++){
+			for (int j = 0; j < xNum; j++) {
 				const float size = 1.0f;
 				float x = (float)j / (float)(xNum - 1);
 				x = 2.0f * x - 1.0f;
@@ -281,24 +323,24 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 				float y = (float)i / (float)(yNum - 1);
 				y = 2.0f * y - 1.0f;
 				y = size * y;
-				cubeVertices[j + i*yNum].pos = XMFLOAT3(x, 0.0f, y);
-				cubeVertices[j + i*yNum].color = XMFLOAT3((float)j / (float)(xNum - 1), (float)i / (float)(yNum - 1), 0.0f);
+				cubeVertices[j + i*xNum].pos = XMFLOAT3(x, 0.0f, y);
+				cubeVertices[j + i*xNum].color = XMFLOAT3((float)j / (float)(xNum - 1), (float)i / (float)(yNum - 1), 0.0f);
 			}
 		}
 
-		D3D11_SUBRESOURCE_DATA vertexBufferData = {0};
+		D3D11_SUBRESOURCE_DATA vertexBufferData = { 0 };
 		vertexBufferData.pSysMem = cubeVertices;
 		vertexBufferData.SysMemPitch = 0;
 		vertexBufferData.SysMemSlicePitch = 0;
 		CD3D11_BUFFER_DESC vertexBufferDesc(sizeof(cubeVertices), D3D11_BIND_VERTEX_BUFFER, D3D11_USAGE_DYNAMIC, D3D11_CPU_ACCESS_WRITE);
-		
+
 		DX::ThrowIfFailed(
 			m_deviceResources->GetD3DDevice()->CreateBuffer(
 				&vertexBufferDesc,
 				&vertexBufferData,
 				&m_vertexBuffer
-				)
-			);
+			)
+		);
 
 
 		// メッシュのインデックスを読み込みます。インデックスの 3 つ 1 組の値のそれぞれは、次のものを表します
@@ -306,23 +348,24 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 		// たとえば、0,2,1 とは、頂点バッファーからのインデックスを意味します:
 		// 0、2、1 を持つ頂点が、このメッシュの
 		// 最初の三角形を構成することを意味します。
-		static unsigned short cubeIndices[(xNum-1)*(yNum-1)*6];
+		static unsigned short cubeIndices[(xNum)*(yNum - 1) * 6];
 		int count = 0;
 		for (int i = 0; i < yNum - 1; i++) {
-			for (int j = 0; j < xNum - 1; j++) {
-				int n = j + i * yNum;
+			for (int j = 0; j < xNum; j++) {
+				int n = j + i * xNum;
+				int nPlusOne = (j + 1) % xNum + i * xNum;
 				cubeIndices[count++] = n;
-				cubeIndices[count++] = n + yNum;
-				cubeIndices[count++] = n + 1;
-				cubeIndices[count++] = n + 1;
-				cubeIndices[count++] = n + yNum;
-				cubeIndices[count++] = n + yNum + 1;
+				cubeIndices[count++] = n + xNum;
+				cubeIndices[count++] = nPlusOne;
+				cubeIndices[count++] = nPlusOne;
+				cubeIndices[count++] = n + xNum;
+				cubeIndices[count++] = nPlusOne + xNum;
 			}
 		}
 
 		m_indexCount = ARRAYSIZE(cubeIndices);
 
-		D3D11_SUBRESOURCE_DATA indexBufferData = {0};
+		D3D11_SUBRESOURCE_DATA indexBufferData = { 0 };
 		indexBufferData.pSysMem = cubeIndices;
 		indexBufferData.SysMemPitch = 0;
 		indexBufferData.SysMemSlicePitch = 0;
@@ -332,12 +375,12 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 				&indexBufferDesc,
 				&indexBufferData,
 				&m_indexBuffer
-				)
-			);
+			)
+		);
 	});
 
 	// キューブが読み込まれたら、オブジェクトを描画する準備が完了します。
-	createCubeTask.then([this] () {
+	createCubeTask.then([this]() {
 		m_loadingComplete = true;
 	});
 }
@@ -349,6 +392,7 @@ void Sample3DSceneRenderer::ReleaseDeviceDependentResources()
 	m_inputLayout.Reset();
 	m_pixelShader.Reset();
 	m_constantBuffer.Reset();
+	m_constantBufferLightCol.Reset();
 	m_vertexBuffer.Reset();
 	m_indexBuffer.Reset();
 }

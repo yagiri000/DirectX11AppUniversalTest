@@ -198,6 +198,25 @@ void DX::DeviceResources::CreateDeviceResources()
 			&m_d2dContext
 			)
 		);
+
+	ID3D11RasterizerState* rasterizerState = NULL;
+	D3D11_RASTERIZER_DESC rasterizerDesc =
+	{
+		D3D11_FILL_SOLID, // ワイヤーフレーム
+		D3D11_CULL_NONE,      // 裏面ポリゴンをカリングします
+		FALSE,
+		0,
+		0.0f,
+		FALSE,
+		FALSE,
+		FALSE,
+		FALSE,
+		FALSE
+	};
+
+	hr = device->CreateRasterizerState(&rasterizerDesc, &rasterizerState);
+
+	context->RSSetState(rasterizerState);
 }
 
 // これらのリソースは、ウィンドウ サイズが変更されるたびに再作成する必要があります。
