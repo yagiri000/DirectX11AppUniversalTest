@@ -8,6 +8,15 @@ using namespace DirectX11AppUniversalTest;
 using namespace DirectX;
 using namespace Windows::Foundation;
 
+
+
+// 自分の原点に対するバネ定数
+const float WavePoint::K_BASE = -0.03f;
+// 自分の隣接する点に対するバネ定数
+const float WavePoint::K_NEAR = 0.03f;
+// 減衰定数
+const float WavePoint::DEC_RATE = 0.988f;
+
 // ファイルから頂点とピクセル シェーダーを読み込み、キューブのジオメトリをインスタンス化します。
 Sample3DSceneRenderer::Sample3DSceneRenderer(const std::shared_ptr<DX::DeviceResources>& deviceResources) :
 	m_loadingComplete(false),
@@ -16,6 +25,14 @@ Sample3DSceneRenderer::Sample3DSceneRenderer(const std::shared_ptr<DX::DeviceRes
 	m_tracking(false),
 	m_deviceResources(deviceResources)
 {
+
+	for (int i = 0; i < yNum; i++) {
+		for (int j = 0; j < xNum; j++) {
+			wavePoints[i][j] = WavePoint(0.0f, 0.0f);
+			wavePoints[i][j].v = 0.0f;
+		}
+	}
+
 	CreateDeviceDependentResources();
 	CreateWindowSizeDependentResources();
 }
@@ -72,7 +89,6 @@ void Sample3DSceneRenderer::Update(DX::StepTimer const& timer)
 		return a * (1.0f - rate) + b * rate;
 	};
 
-	
 
 	if (!m_tracking)
 	{
@@ -81,23 +97,45 @@ void Sample3DSceneRenderer::Update(DX::StepTimer const& timer)
 		double totalRotation = timer.GetTotalSeconds() * radiansPerSecond;
 		float radians = static_cast<float>(totalRotation);
 
+
+
+		// 隣接する点と相互作用
+		for (int i = 1; i < yNum-1; i++) {
+			for (int j = 1; j < xNum-1; j++) {
+				wavePoints[i][j].v += WavePoint::K_NEAR * (wavePoints[i + 1][j].h - wavePoints[i][j].h);
+				wavePoints[i][j].v += WavePoint::K_NEAR * (wavePoints[i - 1][j].h - wavePoints[i][j].h);
+				wavePoints[i][j].v += WavePoint::K_NEAR * (wavePoints[i][j -1].h - wavePoints[i][j].h);
+				wavePoints[i][j].v += WavePoint::K_NEAR * (wavePoints[i][j + 1].h - wavePoints[i][j].h);
+			}
+		}
+
+		// 減衰
+		for (int i = 0; i < yNum; i++) {
+			for (int j = 0; j < xNum; j++) {
+				wavePoints[i][j].v += wavePoints[i][j].h * WavePoint::K_BASE;
+				wavePoints[i][j].h += wavePoints[i][j].v;
+				wavePoints[i][j].v = wavePoints[i][j].v * WavePoint::DEC_RATE;
+			}
+		}
+
+		if ((rand() % 80) == 0) {
+			int x = rand() % xNum;
+			int y = rand() % yNum;
+			wavePoints[y][x].v += 0.3f;
+		}
+
 		// 頂点座標、色を作成 ここの定数は他の場所でも定義されているので注意（あとで直す）
 		static VertexPositionColor cubeVertices[xNum*yNum];
 
-
 		for (int i = 0; i < yNum; i++) {
 			for (int j = 0; j < xNum; j++) {
-				const float ri = (float)i / yNum;
-				const float rj = (float)j / xNum;
-				float r = 0.4f
-					+ 0.08f * sin(5.0f * XM_2PI * rj + radians * 3.0f);
-				const float height = 0.3f;
-				const float angle1 = XM_2PI * rj;
-				float x = r * cos(angle1);
-				float z = r * sin(angle1);
-				float y = height * ri;
+				float rateI = (float)i / yNum;
+				float rateJ = (float)j / xNum;
+				float x = 2.0f * rateJ-1.0f;
+				float y = wavePoints[i][j].h;
+				float z = 2.0f * rateI - 1.0f;
 				cubeVertices[j + i*xNum].pos = XMFLOAT3(x, y, z);
-				XMVECTOR hsv = XMColorHSVToRGB(XMVectorSet(rj, 1.0f, 1.0f, 1.0f));
+				XMVECTOR hsv = XMColorHSVToRGB(XMVectorSet(y * 9.0f, 1.0f, 1.0f, 1.0f));
 				cubeVertices[j + i*xNum].color = XMFLOAT3(XMVectorGetX(hsv), XMVectorGetY(hsv), XMVectorGetZ(hsv));
 			}
 		}
@@ -157,7 +195,7 @@ void Sample3DSceneRenderer::Render()
 
 	
 	m_cBLightBufferData.lightCol.x = 1.0f;
-	m_cBLightBufferData.lightCol.y = 0.0f;
+	m_cBLightBufferData.lightCol.y = 1.0f;
 	m_cBLightBufferData.lightCol.z = 1.0f;
 
 	// 定数バッファーを準備して、グラフィックス デバイスに送信します。
@@ -318,15 +356,13 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 		//{XMFLOAT3(0.5f, 0.5f, 0.5f), XMFLOAT3(1.0f, 1.0f, 1.0f)},
 		for (int i = 0; i < yNum; i++) {
 			for (int j = 0; j < xNum; j++) {
-				const float size = 1.0f;
-				float x = (float)j / (float)(xNum - 1);
-				x = 2.0f * x - 1.0f;
-				x = size * x;
-				float y = (float)i / (float)(yNum - 1);
-				y = 2.0f * y - 1.0f;
-				y = size * y;
-				cubeVertices[j + i*xNum].pos = XMFLOAT3(x, 0.0f, y);
-				cubeVertices[j + i*xNum].color = XMFLOAT3((float)j / (float)(xNum - 1), (float)i / (float)(yNum - 1), 0.0f);
+				float rateJ = (float)j / xNum;
+				float x = j * 0.03f;
+				float y = 0.0f;
+				float z = i * 0.03f;
+				cubeVertices[j + i*xNum].pos = XMFLOAT3(x, y, z);
+				XMVECTOR hsv = XMColorHSVToRGB(XMVectorSet(rateJ, 1.0f, 1.0f, 1.0f));
+				cubeVertices[j + i*xNum].color = XMFLOAT3(XMVectorGetX(hsv), XMVectorGetY(hsv), XMVectorGetZ(hsv));
 			}
 		}
 
@@ -350,10 +386,10 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 		// たとえば、0,2,1 とは、頂点バッファーからのインデックスを意味します:
 		// 0、2、1 を持つ頂点が、このメッシュの
 		// 最初の三角形を構成することを意味します。
-		static unsigned short cubeIndices[(xNum)*(yNum - 1) * 6];
+		static unsigned short cubeIndices[(xNum-1)*(yNum-1) * 6];
 		int count = 0;
-		for (int i = 0; i < yNum - 1; i++) {
-			for (int j = 0; j < xNum; j++) {
+		for (int i = 0; i < yNum-1; i++) {
+			for (int j = 0; j < xNum-1; j++) {
 				int n = j + i * xNum;
 				int nPlusOne = (j + 1) % xNum + i * xNum;
 				cubeIndices[count++] = n;
