@@ -297,10 +297,12 @@ void Sample3DSceneRenderer::CreateDeviceDependentResources()
 		);
 
 
-		CD3D11_BUFFER_DESC constantBufferLightColDesc(sizeof(ModelViewProjectionConstantBuffer), D3D11_BIND_CONSTANT_BUFFER);
+		unsigned int byteWidth = max(sizeof(LightColConstantBuffer), 16U);
+
+		CD3D11_BUFFER_DESC constantBufferLightColDesc(byteWidth, D3D11_BIND_CONSTANT_BUFFER);
 		DX::ThrowIfFailed(
 			m_deviceResources->GetD3DDevice()->CreateBuffer(
-				&constantBufferDesc,
+				&constantBufferLightColDesc,
 				nullptr,
 				&m_constantBufferLightCol
 			)
